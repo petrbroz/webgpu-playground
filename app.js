@@ -27,6 +27,20 @@ async function initRenderer(canvas) {
     ]);
     buffer.unmap();
 
+    // Setup uniform buffer
+    const uniformBuffer = device.createBuffer({
+        size: 16 * 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true
+    });
+    new Float32Array(uniformBuffer.getMappedRange()).set([
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 2.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ]);
+    uniformBuffer.unmap();
+
     // Setup swap chain
     const swapChainFormat = 'bgra8unorm';
     context.configure({
@@ -91,10 +105,31 @@ async function initRenderer(canvas) {
         entryPoint: 'main'
     };
 
+    // Setup uniform bindings
+    const uniformBindGroupLayout = device.createBindGroupLayout({
+        entries: [{
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX,
+            buffer: {
+                type: 'uniform'
+            }
+        }]
+    });
+    const uniformBindGroup = device.createBindGroup({
+        layout: uniformBindGroupLayout,
+        entries: [
+            {
+                binding: 0,
+                resource: {
+                    buffer: uniformBuffer
+                }
+            }
+        ]
+    });
+
     // Setup rendering pipeline
-    const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
     const renderPipeline = device.createRenderPipeline({
-        layout: layout,
+        layout: device.createPipelineLayout({ bindGroupLayouts: [uniformBindGroupLayout] }),
         vertex: vertexState,
         fragment: fragmentState,
         primitive: {
@@ -107,23 +142,34 @@ async function initRenderer(canvas) {
         }
     });
 
-    function render() {
-        const renderPassDesc = {
-            colorAttachments: [{
-                view: context.getCurrentTexture().createView(),
-                loadValue: [0.3, 0.6, 0.9, 1]
-            }],
-            depthStencilAttachment: {
-                view: depthTexture.createView(),
-                depthLoadValue: 1.0,
-                depthStoreOp: 'store',
-                stencilLoadValue: 0,
-                stencilStoreOp: 'store'
-            }
-        };
+    let matrix = new Float32Array([
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ]);
+    let renderPassDesc = {
+        colorAttachments: [{
+            view: context.getCurrentTexture().createView(),
+            loadValue: [0.3, 0.6, 0.9, 1]
+        }],
+        depthStencilAttachment: {
+            view: depthTexture.createView(),
+            depthLoadValue: 1.0,
+            depthStoreOp: 'store',
+            stencilLoadValue: 0,
+            stencilStoreOp: 'store'
+        }
+    };
+    function render(t) {
+        let c = Math.cos(0.001 * t), s = Math.sin(0.001 * t);
+        matrix[0] = c; matrix[1] = -s; matrix[4] = s; matrix[5] = c;
+        device.queue.writeBuffer(uniformBuffer, 0, matrix);
+        renderPassDesc.colorAttachments[0].view = context.getCurrentTexture().createView();
         const commandEncoder = device.createCommandEncoder();
         const renderPassEncoder = commandEncoder.beginRenderPass(renderPassDesc);
         renderPassEncoder.setPipeline(renderPipeline);
+        renderPassEncoder.setBindGroup(0, uniformBindGroup);
         renderPassEncoder.setVertexBuffer(0, buffer);
         renderPassEncoder.draw(3, 1, 0, 0);
         renderPassEncoder.endPass();
