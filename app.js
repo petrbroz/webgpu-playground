@@ -1,5 +1,5 @@
-import { BASIC_VERT } from './basic-vert.js';
-import { BASIC_FRAG } from './basic-frag.js';
+import { BASIC_VERT } from './shaders/basic-vert.js';
+import { BASIC_FRAG } from './shaders/basic-frag.js';
 
 async function initRenderer(canvas) {
     if (!navigator.gpu) {
